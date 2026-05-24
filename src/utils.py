@@ -70,7 +70,7 @@ def identify_na_as_absence_columns() -> List[str]:
     """
     Columns where NA means "absence of feature" (e.g., no garage, no basement).
     Based on data_description.txt.
-    Bryce: 24/05/2026 - Confirmed that these are the only features with NA = absence. Compared with data_description.txt and searched for NA with case sensitivity.
+    Bryce: 24/05/2026 - Confirmed that these are the only features with NA = absence. Compared with data_description.txt and searched for NA with case.
     """
     return [
         'Alley',           # NA = No alley access
