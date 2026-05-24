@@ -1,0 +1,306 @@
+House Prices Competition - Project Handover
+
+1. Project Overview
+
+Competition: House Prices: Advanced Regression Techniques (Kaggle)
+Objective: Predict final sale price (SalePrice) of residential homes
+Evaluation Metric: RMSLE (Root Mean Squared Log Error)
+Current Status: EDA complete, preprocessing done, feature engineering implemented, data saved for modeling
+
+Key Files:
+data/train.csv - 1460 rows, 81 columns (includes SalePrice)
+data/test.csv - 1459 rows, 80 columns (no SalePrice)
+data/sample_submission.csv - Submission template
+
+2. Data Understanding - Critical Nuances
+
+Target Variable (SalePrice)
+Skewness (original): 1.883 (right-skewed)
+Skewness (log1p): 0.121 (approximately normal)
+No zero or negative values confirmed
+
+Decision: Apply np.log1p() to SalePrice before training, then np.expm1() for predictions.
+
+NA Values - Two Types:
+
+Absence indicators (14 columns) - NA means feature doesn't exist:
+Alley, BsmtQual, BsmtCond, BsmtExposure, BsmtFinType1, BsmtFinType2, FireplaceQu, GarageType, GarageFinish, GarageQual, GarageCond, PoolQC, Fence, MiscFeature
+
+Truly missing columns after processing (5 columns):
+LotFrontage (Numerical, ~17% missing)
+GarageYrBlt (Numerical, ~5% missing)
+MasVnrArea (Numerical, ~0.5% missing)
+MasVnrType (Categorical, ~0.5% missing)
+Electrical (Categorical, ~0.1% missing)
+
+3. EDA Key Findings
+
+Top Correlations with SalePrice:
+OverallQual: 0.79 (overall material quality)
+GrLivArea: 0.71 (above ground living area)
+GarageCars: 0.64 (garage size in cars)
+GarageArea: 0.62 (garage square footage)
+TotalBsmtSF: 0.61 (total basement area)
+1stFlrSF: 0.60 (first floor square feet)
+FullBath: 0.56 (full bathrooms above grade)
+TotRmsAbvGrd: 0.53 (total rooms above grade)
+YearBuilt: 0.52 (construction year)
+YearRemodAdd: 0.51 (remodel year)
+
+Multicollinearity Detected:
+GrLivArea and TotRmsAbvGrd have 0.83 correlation
+GarageCars and GarageArea have 0.88 correlation
+
+Categorical Cardinality:
+Neighborhood: 25 unique values (consider target encoding or grouping)
+MSSubClass: 15 unique values (treat as categorical, not numeric)
+Exterior1st: 15 unique values
+Exterior2nd: 16 unique values
+
+Temporal Findings:
+Pre-1950 remodel cutoff - no houses remodeled before 1950 (data quirk)
+Newer houses and recent remodels command higher prices
+GFC effect (2007-2008) shows slight price dip
+
+Seasonality:
+Monthly ANOVA p-value = 0.347 (not significant)
+Yearly ANOVA p-value = 0.147 (not significant)
+Conclusion: Minimal seasonality, but GFC period flagged as feature
+
+Outliers Identified:
+GrLivArea > 4000: 5 houses (may need capping)
+TotalBsmtSF > 3000: approximately 10 houses (monitor, not severe)
+
+4. Data Preprocessing Decisions
+
+Step 1 - Handle Absence NA:
+Replace NA with 'None' for absence columns
+
+Step 2 - Ordinal Encoding:
+Applied to 14 ordinal features with consistent mapping (Ex=5, Gd=4, TA=3, Fa=2, Po=1, None=0)
+Special mappings for BsmtExposure (Gd=4, Av=3, Mn=2, No=1, None=0)
+Special mappings for BsmtFinType1/2 (GLQ=6, ALQ=5, BLQ=4, Rec=3, LwQ=2, Unf=1, None=0)
+Special mapping for Fence (GdPrv=4, MnPrv=3, GdWo=2, MnWw=1, None=0)
+
+Step 3 - MSSubClass Conversion:
+Convert from int to categorical (string)
+
+Step 4 - Imputation (Simple):
+Numerical features: median imputation (robust to outliers)
+Categorical features: most frequent imputation (mode)
+Note: Simple imputation may distort distributions. Advanced methods could be explored later.
+
+Step 5 - Scaling:
+Method: RobustScaler (less sensitive to outliers than StandardScaler)
+Applied to all numerical features after encoding
+
+5. Feature Engineering - Completed
+
+Area Features:
+TotalSF = GrLivArea + TotalBsmtSF (combined living space)
+TotalBath = FullBath + 0.5*HalfBath + BsmtFullBath + 0.5*BsmtHalfBath (total bathrooms weighted)
+TotalPorchSF = sum of all porch types (outdoor living space)
+
+Age Features:
+HouseAge = 2010 - YearBuilt (age at sale)
+RemodAge = 2010 - YearRemodAdd (years since remodel)
+IsRemodeled = (YearBuilt != YearRemodAdd) (binary flag)
+IsOnOrBefore1950Remodel = (YearRemodAdd <= 1950) (captures pre-1950 remodel quirk)
+
+Remodel Era Categories:
+OnOrBefore_1950: YearRemodAdd <= 1950
+Original_No_Remodel: YearRemodAdd == YearBuilt
+Remodel_1951_1999: 1950 < YearRemodAdd < 2000
+Remodel_2000_Plus: YearRemodAdd >= 2000
+
+Economic Period Features:
+IsFinancialCrisis = (YrSold between 2008 and 2009)
+IsPostBubble = (YrSold >= 2007)
+YearMonth = combined string (dropped later, components extracted)
+
+Binary Presence Flags:
+HasBsmt = TotalBsmtSF > 0
+HasGarage = GarageArea > 0
+HasPool = PoolArea > 0
+HasFireplace = Fireplaces > 0
+
+Quality and Ratio Features:
+TotalQual = sum of ExterQual, BsmtQual, HeatingQC, KitchenQual, GarageQual
+QualPerAge = TotalQual / (HouseAge + 1)
+AreaPerRoom = GrLivArea / (TotRmsAbvGrd + 1)
+
+Lot Features:
+IsIrregularLot = LotShape in [IR1, IR2, IR3]
+IsSevereSlope = LandSlope == Sev
+
+Features NOT Engineered (Decision Log):
+MoSold_sin and MoSold_cos removed (seasonality not significant)
+Quarter, IsPeakSeason, IsHolidayMonth removed (no evidence of seasonal effects)
+YearDecade removed (year fixed effects handled by Year column)
+
+6. Categorical Feature Handling
+
+Categorization by Cardinality:
+Low cardinality (2-4 unique): IsOnOrBefore1950Remodel, HasBsmt, IsRemodeled, etc. - One-hot applied
+Medium cardinality (5-10 unique): MSSubClass, RemodelEra, Month - One-hot applied
+High cardinality (greater than 10 unique): Neighborhood (25), Exterior1st (15), Year (6) - Target encoding deferred to modeling
+Special: YearMonth - extracted components, dropped
+
+One-hot encoding applied to all low and medium cardinality categoricals using pd.get_dummies(drop_first=True)
+
+Alignment between train and test:
+Add missing columns to test with value 0
+Remove extra columns from test
+
+7. Current Data State
+
+Final Shapes After Preprocessing:
+X_train: 1460 rows, approximately 250 features (encoded, scaled)
+y_train: 1460 rows, 1 column (log-transformed SalePrice)
+X_test: 1459 rows, approximately 250 features (encoded, scaled)
+
+Saved Files in data/ directory:
+X_train_processed.csv (full training features)
+y_train_processed.csv (log-transformed SalePrice)
+X_test_processed.csv (test features)
+X_train_split.csv (training split 80%)
+y_train_split.csv (corresponding target)
+
+Reports Generated in reports/ directory (13 files):
+sale_price_distribution.png
+missing_values.png
+top_correlations.png
+correlation_matrix.png
+outliers_boxplots.png
+outliers_boxplots_binned_TotalBsmtSF.png
+categorical_impact.png
+temporal_features.png
+remodel_categories.png
+neighborhood_prices.png
+seasonality_analysis.png
+ms_subclass_analysis.png
+
+8. Known Issues and Limitations
+
+Simple median/mode imputation (medium severity) - could try KNN imputation, regression imputation, or MICE
+Outliers not capped (low severity) - apply Winsorization or capping at 99th percentile
+High-cardinality features like Neighborhood (medium severity) - implement target encoding
+MSSubClass grouping not used (low severity) - could create descriptive groups
+No feature selection performed (low severity) - let tree-based models handle
+Year and Month treated as low-cardinality (low severity) - could encode cyclically if seasonality stronger
+
+9. Code Organization
+
+Directory structure:
+house-prices-kaggle/
+├── data/                      (raw and processed data)
+├── notebooks/
+│   ├── 01_eda_analysis.ipynb
+│   └── 02_data_preprocessing_ml.ipynb
+├── src/
+│   └── utils.py               (shared helper functions)
+├── reports/                   (generated plots)
+├── submissions/               (future submission CSVs)
+├── README.md
+└── requirements.txt
+
+Key Helper Functions in src/utils.py:
+load_data() - load train/test/sample
+plot_sale_price_distribution() - visualize target distribution
+analyze_missing_values() - create missing value DataFrame
+identify_na_as_absence_columns() - return list of 14 absence columns
+replace_na_with_none() - replace NA with None for absence columns
+numeric_vs_categorical_split() - split columns by dtype
+plot_correlation_with_target() - correlation bar chart
+plot_categorical_impact() - box plots by category
+
+10. Next Steps - Ready for Modeling
+
+Recommended Model Order (Simple to Complex):
+Linear Regression / Ridge / Lasso (baseline)
+Random Forest (non-linear, handles interactions)
+XGBoost (gradient boosting)
+LightGBM (faster, often better on tabular)
+Ensemble (weighted average of top models)
+Stacking (meta-model on base predictions)
+
+Validation Strategy:
+Method: 5-fold or 10-fold KFold (shuffled)
+Metric: RMSE (since y_train is log-transformed)
+Holdout: keep final test set untouched until submission
+
+Hyperparameter Tuning (Optuna recommended):
+Ridge: alpha
+Lasso: alpha
+Random Forest: n_estimators, max_depth, min_samples_split
+XGBoost: n_estimators, max_depth, learning_rate, subsample
+LightGBM: num_leaves, learning_rate, n_estimators, feature_fraction
+
+Immediate Action Items:
+Create 03_modeling.ipynb
+Implement baseline with Ridge regression
+Set up cross-validation loop
+Implement feature importance analysis
+Try target encoding for Neighborhood
+Generate first submission
+
+11. Decision Log
+
+Date: 2025-05-24
+Decision: Replace NA with None for 14 absence columns
+Rationale: NA indicates feature absence, not missing data
+Status: Implemented
+
+Date: 2025-05-24
+Decision: Treat MSSubClass as categorical (string)
+Rationale: Stored as int but represents 15 dwelling types
+Status: Implemented
+
+Date: 2025-05-24
+Decision: Remove cyclical month encoding
+Rationale: ANOVA showed no significant seasonality (p=0.347)
+Status: Removed
+
+Date: 2025-05-24
+Decision: Add IsOnOrBefore1950Remodel flag
+Rationale: EDA revealed no houses remodeled before 1950
+Status: Implemented
+
+Date: 2025-05-24
+Decision: Keep simple median/mode imputation
+Rationale: Baseline approach, can be upgraded later
+Status: Implemented
+
+Date: 2025-05-24
+Decision: Use RobustScaler instead of StandardScaler
+Rationale: Less sensitive to outlier influence
+Status: Implemented
+
+Date: 2025-05-24
+Decision: Defer target encoding to modeling notebook
+Rationale: High-cardinality features need careful handling
+Status: Pending
+
+Date: 2025-05-24
+Decision: Save train/validation split separately
+Rationale: Enables faster iteration in modeling
+Status: Implemented
+
+12. Key Code Snippets for Quick Reference
+
+Loading Processed Data:
+X_train = pd.read_csv("../data/X_train_processed.csv")
+y_train = pd.read_csv("../data/y_train_processed.csv").values.ravel()
+X_test = pd.read_csv("../data/X_test_processed.csv")
+
+Inverse Transform for Predictions:
+predictions_log = model.predict(X_test)
+predictions = np.expm1(predictions_log)
+
+Cross-Validation Template:
+from sklearn.model_selection import KFold, cross_val_score
+kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+scores = cross_val_score(model, X_train, y_train, cv=kfold, scoring='neg_root_mean_squared_error')
+print(f"CV RMSE: {-scores.mean():.4f} (+/- {scores.std():.4f})")
+
+Handover Complete. Ready to proceed to modeling.
